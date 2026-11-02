@@ -7,6 +7,10 @@
     Reports the current state of the UCPD (UserChoice Protection Driver) on this machine.
 
 .DESCRIPTION
+    UCPD is a Microsoft kernel driver, shipped through Windows updates since early 2024,
+    that blocks non-Microsoft tools from writing the UserChoice registry keys of protected
+    associations (such as http, https and the PDF and HTML file types). While it is active,
+    SetUserFTA cannot apply those associations, which is why it sometimes has to be disabled.
     Checks the UCPD.sys driver file presence, whether the associated Windows service is
     registered, its configured start type, and its current running status. Also reports
     whether the session has administrator rights (required to change the state with

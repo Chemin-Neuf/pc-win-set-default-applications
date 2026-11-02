@@ -24,6 +24,12 @@ Restores Windows 11 default application associations (file extensions and protoc
 - Network access to `setuserfta.com` **or** access to `\\your-server\your-share\SetUserFTA.exe`
 - No administrator rights required (except `set-ucpd-service.ps1`)
 
+### About SetUserFTA
+
+[SetUserFTA](https://setuserfta.com) is a third-party command-line tool by Christoph Kolbicz. It sets a user's default application for a file extension or protocol by writing the `UserChoice` registry key with the hash Windows expects, so the change is accepted without user interaction. `set-default-applications.ps1` resolves the ProgID and calls SetUserFTA once per association.
+
+We deliberately stay on **version 1.8.4**, the last free edition, because this toolset is used for non-professional purposes only. Newer releases require a paid licence. Professional use would require a licence or a switch to the supported XML method described below.
+
 ## Quick Start
 
 ```powershell
@@ -49,6 +55,34 @@ Edit `default-applications.csv` to add your associations. Each uncommented row m
 `get-ucpd-status.ps1` checks whether the UCPD (UserChoice Protection Driver) is present, registered, and running — this driver can block SetUserFTA from writing UserChoice keys. No changes are made; the output includes color-coded OK / WARNING / ERROR indicators. Run this first if associations are not being applied.
 
 `set-ucpd-service.ps1 -State Disabled` configures the UCPD service start type to Disabled and attempts to stop the running driver immediately; `-State Default` restores the Windows default (Automatic). Administrator rights are required. A reboot is normally needed for any change to take full effect.
+
+## Comparison with Microsoft's Supported Methods
+
+Windows offers three ways to set default applications:
+
+- **This script (SetUserFTA)** writes the current user's `UserChoice` keys directly. It needs no administrator rights, applies immediately to existing profiles, and resolves the ProgID on each machine from a friendly application name. UCPD-protected associations are skipped while UCPD is active; disable UCPD first with `set-ucpd-service.ps1 -State Disabled` (administrator rights and a reboot required) to allow them.
+- **`Dism /Online /Import-DefaultAppAssociations:file.xml`** stores a default associations XML file in the Windows image. Windows applies it only when a new user profile is created; existing users are not affected. Requires administrator rights.
+- **Group Policy "Set a default associations configuration file"** (Computer Configuration > Administrative Templates > Windows Components > File Explorer) points to the same XML format and is applied at every sign-in for all users. This is the supported way to enforce defaults, including UCPD-protected associations, on existing profiles.
+
+The XML file can be exported from a reference machine with `Dism /Online /Export-DefaultAppAssociations:file.xml`. It requires exact ProgIDs.
+
+| Capability | Script (SetUserFTA) | DISM import | GPO + XML |
+|---|---|---|---|
+| File extensions and protocols | Yes | Yes | Yes |
+| Existing user profiles | Yes | No, new profiles only | Yes, at sign-in |
+| Immediate effect, no sign-out | Yes | No | No, next sign-in |
+| No administrator rights needed | Yes | No | Configured centrally once |
+| UCPD-protected associations (http, https, `.pdf`, `.html`...) while UCPD is active | No, skipped | Yes | Yes |
+| Requires UCPD to be disabled | Only for protected associations | No | No |
+| Restores defaults after a Windows update reset | Yes, when re-run | No | Yes, at next sign-in |
+| Friendly application names, ProgID resolved per machine | Yes | No, exact ProgID required | No, exact ProgID required |
+| Layered configuration (several CSV files, later wins) | Yes | No, one XML | No, one XML per GPO |
+| Logging and per-association result | Yes | No | No |
+| Detects applications not declaring the association | Yes, with a warning | No, silently ignored | No, silently ignored |
+| Users can keep their own later changes | Yes, one-shot | Yes | No, re-applied at each sign-in |
+| Targeting by user or computer group | Through the login script | No | Yes, GPO filtering |
+| Officially supported by Microsoft | No | Yes | Yes |
+| Third-party dependency | SetUserFTA | None | None |
 
 ## Built-in Help
 

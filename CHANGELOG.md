@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UcpdUtils.psm1
 
+### [1.1.0] - 2026-11-02
+
+#### Added
+
+- `Set-UcpdState` now also disables the UCPD scheduled task(s) (`Disabled`) or re-enables them (`Default`), even when the service is already at the target start type. The tasks found are the known `\Microsoft\Windows\AppxDeploymentClient\UCPD velocity` and any task that runs `UCPDMgr.exe`. New result properties: `TaskSuccess` and `TaskMessage`.
+- `Get-UcpdStatus` now returns `TaskQueryStatus`, `TaskQueryMessage` and `Tasks`. Administrator rights are required to read the tasks.
+
 ### [1.0.1] - 2026-11-02
 
 #### Fixed
@@ -147,6 +154,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## get-ucpd-status.ps1
 
+### [2.1.0] - 2026-11-02
+
+#### Added
+
+- New check for the UCPD scheduled task(s), such as `UCPD velocity`, which can re-enable UCPD. A disabled task is OK. An enabled task is an ERROR when the service is disabled, because it can switch the service back on; otherwise it is a WARNING.
+- Without administrator rights the task(s) cannot be read and are reported as UNKNOWN.
+
 ### [2.0.0] - 2026-05-06
 
 #### Changed
@@ -155,6 +169,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Imports `UcpdUtils.psm1` and calls `Get-UcpdStatus`.
 
 ## set-ucpd-service.ps1
+
+### [3.1.0] - 2026-11-02
+
+#### Added
+
+- `-State Disabled` now also disables the UCPD scheduled task(s), so Windows cannot re-enable UCPD later. `-State Default` re-enables them.
+- The task states are shown before and after the change. The script exits with code 1 if a task cannot be changed.
 
 ### [3.0.1] - 2026-11-02
 

@@ -8,8 +8,8 @@ Restores Windows 11 default application associations (file extensions and protoc
 |---|---|
 | `set-default-applications.ps1` | Main script — resolves SetUserFTA and applies all associations |
 | `get-application-associations.ps1` | Discovery tool — queries the registry to find app names, categories, and ProgIDs |
-| `get-ucpd-status.ps1` | Read-only diagnostic — reports current UCPD driver and service state |
-| `set-ucpd-service.ps1` | Administrative tool — disables or restores the UCPD service start type |
+| `get-ucpd-status.ps1` | Read-only diagnostic — reports current UCPD driver, service and scheduled task state |
+| `set-ucpd-service.ps1` | Administrative tool — disables or restores the UCPD service start type and scheduled task(s) |
 | `ApplicationRegistry.psm1` | Internal module — registry discovery, capabilities resolution, and friendly name derivation |
 | `UcpdUtils.psm1` | Internal module — `Get-UcpdStatus` and `Set-UcpdState` shared by the UCPD scripts |
 | `SharedUtils.psm1` | Shared logging and console utilities (synced from ps-shared-utils) |
@@ -22,7 +22,7 @@ Restores Windows 11 default application associations (file extensions and protoc
 
 - PowerShell 5.1+
 - Network access to `setuserfta.com` **or** access to `\\your-server\your-share\SetUserFTA.exe`
-- No administrator rights required (except `set-ucpd-service.ps1`)
+- No administrator rights required (except `set-ucpd-service.ps1`; `get-ucpd-status.ps1` needs them only to read the UCPD scheduled task)
 
 ### About SetUserFTA
 
@@ -52,11 +52,11 @@ Edit `default-applications.csv` to add your associations. Each uncommented row m
 
 `get-application-associations.ps1 -App <name>` and `-Category <type>` output detailed association objects and can export them directly to a CSV with `-ExportCsv`. `-ListCategories` lists all perceived-type category names (such as `video`, `audio`) that exist on the current machine.
 
-`get-ucpd-status.ps1` checks whether the UCPD (UserChoice Protection Driver) is present, registered, and running — this driver can block SetUserFTA from writing UserChoice keys. No changes are made; the output includes color-coded OK / WARNING / ERROR indicators. Run this first if associations are not being applied.
+`get-ucpd-status.ps1` checks whether the UCPD (UserChoice Protection Driver) is present, registered, and running, and whether its scheduled task is enabled — this driver can block SetUserFTA from writing UserChoice keys. No changes are made; the output includes color-coded OK / WARNING / ERROR indicators. Run this first if associations are not being applied.
 
-UCPD (`C:\Windows\System32\drivers\UCPD.sys`) is a Microsoft file system filter driver registered as the `UCPD` service (display name `UCPD`). By default it starts with the system (start type System, `Start = 1`), early in the boot process.
+UCPD (`C:\Windows\System32\drivers\UCPD.sys`) is a Microsoft file system filter driver registered as the `UCPD` service (display name `UCPD`). By default it starts with the system (start type System, `Start = 1`), early in the boot process. A scheduled task, `\Microsoft\Windows\AppxDeploymentClient\UCPD velocity`, runs `UCPDMgr.exe` and can re-enable the service after it was disabled. This task is only visible from an elevated session.
 
-`set-ucpd-service.ps1 -State Disabled` configures the UCPD service start type to Disabled and attempts to stop the running driver immediately; `-State Default` restores the Windows default (System). Administrator rights are required. A reboot is normally needed for any change to take full effect.
+`set-ucpd-service.ps1 -State Disabled` configures the UCPD service start type to Disabled, disables the UCPD scheduled task(s) and attempts to stop the running driver immediately; `-State Default` restores the Windows default (System start type, task(s) enabled). Administrator rights are required. A reboot is normally needed for any change to take full effect. Windows updates may restore the task or the service; re-run `get-ucpd-status.ps1` after major updates.
 
 ## Comparison with Microsoft's Supported Methods
 

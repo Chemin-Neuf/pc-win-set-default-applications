@@ -4,12 +4,14 @@
   Full license text: see LICENSE at the repository root
 #>
 # Original Author: Claude Sonnet 4.6 (GitHub Copilot)
+# Major Contributors: Claude (GitHub Copilot)
 <#
 .SYNOPSIS
     Shared UCPD (UserChoice Protection Driver) functions for the pc-set-default-applications toolset.
 
 .DESCRIPTION
-    Provides Get-UcpdStatus and Set-UcpdState for reading and changing the UCPD driver state.
+    Provides Get-UcpdStatus and Set-UcpdState for reading and changing the UCPD driver state,
+    including the UCPD scheduled task(s) that can re-enable the driver.
     Consumed by get-ucpd-status.ps1, set-ucpd-service.ps1, and set-default-applications.ps1.
     Never calls exit. Returns structured PSCustomObjects so callers can decide how to handle results.
 #>
@@ -22,6 +24,11 @@ $script:ucpdServiceName     = 'UCPD'
 $script:ucpdRegistryPath    = 'HKLM:\SYSTEM\CurrentControlSet\Services\UCPD'
 $script:ucpdDefaultScToken  = 'system' # sc.exe token for System (Windows default for this file system filter driver)
 $script:ucpdDefaultStartDword = 1      # must match $script:ucpdDefaultScToken
+# Scheduled task(s) running UCPDMgr.exe can re-enable the UCPD service after it was disabled.
+# Tasks are only visible to elevated sessions.
+$script:ucpdKnownTaskPaths    = @('\Microsoft\Windows\AppxDeploymentClient\UCPD velocity')
+$script:ucpdTaskExecutable    = 'UCPDMgr.exe' # fallback discovery: any task whose action runs this file
+$script:ucpdTaskDisabledState = 'Disabled'
 
 # ============================================================
 # PRIVATE HELPERS
@@ -46,6 +53,172 @@ function Get-UcpdStartTypeLabel {
     }
 }
 
+<#
+.SYNOPSIS
+    Finds the scheduled task(s) that can re-enable UCPD.
+
+.DESCRIPTION
+    Looks up the known task paths first, then any task whose action runs UCPDMgr.exe.
+    Requires an elevated session: the UCPD tasks are hidden from standard users.
+
+.OUTPUTS
+    PSCustomObject with:
+      QueryStatus - [string] OK | NotAdmin | Unavailable | Error
+      Message     - [string] Detail when QueryStatus is not OK.
+      Tasks       - [object[]] One entry per task: FullPath, TaskPath, TaskName, State.
+#>
+function Get-UcpdScheduledTask {
+    [CmdletBinding()]
+    param()
+
+    $result = [PSCustomObject]@{
+        QueryStatus = 'Error'
+        Message     = ''
+        Tasks       = @()
+    }
+
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        $result.QueryStatus = 'NotAdmin'
+        $result.Message     = 'UCPD scheduled tasks are only visible to an elevated session.'
+        return $result
+    }
+
+    if (-not (Get-Command -Name 'Get-ScheduledTask' -ErrorAction SilentlyContinue)) {
+        $result.QueryStatus = 'Unavailable'
+        $result.Message     = 'The ScheduledTasks module is not available on this system.'
+        return $result
+    }
+
+    $found = [ordered]@{}
+
+    foreach ($knownPath in $script:ucpdKnownTaskPaths) {
+        $splitIndex = $knownPath.LastIndexOf('\')
+        $taskPath   = $knownPath.Substring(0, $splitIndex + 1)
+        $taskName   = $knownPath.Substring($splitIndex + 1)
+        try {
+            $task = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction Stop
+            $found[$knownPath] = $task
+        }
+        catch {
+            Write-Detail ('UCPD: Known task not found: {0}' -f $knownPath)
+        }
+    }
+
+    try {
+        $allTasks = Get-ScheduledTask -ErrorAction Stop
+        foreach ($task in $allTasks) {
+            $fullPath = '{0}{1}' -f $task.TaskPath, $task.TaskName
+            if ($found.Contains($fullPath)) { continue }
+            $runsUcpdMgr = $task.Actions | Where-Object {
+                $_.Execute -and ([System.IO.Path]::GetFileName($_.Execute.Trim('"')) -eq $script:ucpdTaskExecutable)
+            }
+            if ($runsUcpdMgr) {
+                Write-Detail ('UCPD: Discovered task running {0}: {1}' -f $script:ucpdTaskExecutable, $fullPath)
+                $found[$fullPath] = $task
+            }
+        }
+    }
+    catch {
+        $result.QueryStatus = 'Error'
+        $result.Message     = ('Could not enumerate scheduled tasks: {0}' -f $_.Exception.Message)
+        return $result
+    }
+
+    $result.Tasks = @(foreach ($key in $found.Keys) {
+        [PSCustomObject]@{
+            FullPath = $key
+            TaskPath = $found[$key].TaskPath
+            TaskName = $found[$key].TaskName
+            State    = $found[$key].State.ToString()
+        }
+    })
+    $result.QueryStatus = 'OK'
+    return $result
+}
+
+<#
+.SYNOPSIS
+    Disables or re-enables the UCPD scheduled task(s).
+
+.PARAMETER State
+    Disabled - disables every enabled UCPD task.
+    Default  - re-enables every disabled UCPD task.
+
+.OUTPUTS
+    PSCustomObject with:
+      Success  - [bool]     $false when the tasks could not be queried or a change failed.
+      Changed  - [string[]] Full paths of tasks whose state was changed.
+      Failed   - [string[]] Failure messages, one per task.
+      Message  - [string]   Human-readable summary.
+#>
+function Set-UcpdScheduledTaskState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateSet('Disabled', 'Default')]
+        [string]$State
+    )
+
+    $result = [PSCustomObject]@{
+        Success = $false
+        Changed = @()
+        Failed  = @()
+        Message = ''
+    }
+
+    $query = Get-UcpdScheduledTask
+    if ($query.QueryStatus -ne 'OK') {
+        $result.Message = ('UCPD scheduled tasks not processed: {0}' -f $query.Message)
+        return $result
+    }
+
+    if ($query.Tasks.Count -eq 0) {
+        $result.Success = $true
+        $result.Message = 'No UCPD scheduled task found. Nothing to do.'
+        return $result
+    }
+
+    $changed = [System.Collections.Generic.List[string]]::new()
+    $failed  = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($task in $query.Tasks) {
+        $isDisabled = $task.State -eq $script:ucpdTaskDisabledState
+        if (($State -eq 'Disabled' -and $isDisabled) -or ($State -eq 'Default' -and -not $isDisabled)) {
+            Write-Detail ('UCPD: Task already at target ({0}): {1}' -f $task.State, $task.FullPath)
+            continue
+        }
+        try {
+            if ($State -eq 'Disabled') {
+                Disable-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName -ErrorAction Stop | Out-Null
+            }
+            else {
+                Enable-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName -ErrorAction Stop | Out-Null
+            }
+            Write-Detail ('UCPD: Task {0}: {1}' -f $State.ToLower(), $task.FullPath)
+            $changed.Add($task.FullPath)
+        }
+        catch {
+            $failed.Add(('{0}: {1}' -f $task.FullPath, $_.Exception.Message))
+        }
+    }
+
+    $result.Changed = $changed.ToArray()
+    $result.Failed  = $failed.ToArray()
+    $result.Success = ($failed.Count -eq 0)
+    $verb = if ($State -eq 'Disabled') { 'disabled' } else { 'enabled' }
+    if (-not $result.Success) {
+        $result.Message = ('Failed to change UCPD scheduled task(s): {0}' -f ($failed -join ' | '))
+    }
+    elseif ($changed.Count -gt 0) {
+        $result.Message = ('UCPD scheduled task(s) {0}: {1}' -f $verb, ($changed -join ', '))
+    }
+    else {
+        $result.Message = ('UCPD scheduled task(s) already {0}. No change needed.' -f $verb)
+    }
+    return $result
+}
+
 # ============================================================
 # PUBLIC FUNCTIONS
 # ============================================================
@@ -63,6 +236,9 @@ function Get-UcpdStartTypeLabel {
       StartTypeLabel   - [string] Human-readable start type.
       RunningStatus    - [string] Current SCM status string (e.g. 'Running', 'Stopped').
       IsAdmin          - [bool]   $true when the current session is elevated.
+      TaskQueryStatus  - [string] OK | NotAdmin | Unavailable | Error (scheduled task lookup).
+      TaskQueryMessage - [string] Detail when TaskQueryStatus is not OK.
+      Tasks            - [object[]] UCPD scheduled tasks: FullPath, TaskPath, TaskName, State.
 #>
 function Get-UcpdStatus {
     [CmdletBinding()]
@@ -76,6 +252,9 @@ function Get-UcpdStatus {
         StartTypeLabel    = 'N/A'
         RunningStatus     = 'N/A'
         IsAdmin           = $false
+        TaskQueryStatus   = 'Error'
+        TaskQueryMessage  = ''
+        Tasks             = @()
     }
 
     $result.IsAdmin          = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -102,6 +281,11 @@ function Get-UcpdStatus {
         }
     }
 
+    $taskQuery               = Get-UcpdScheduledTask
+    $result.TaskQueryStatus  = $taskQuery.QueryStatus
+    $result.TaskQueryMessage = $taskQuery.Message
+    $result.Tasks            = $taskQuery.Tasks
+
     # IsActive: driver file present AND service not disabled AND currently running
     $result.IsActive = (
         $result.DriverPresent -and
@@ -114,18 +298,24 @@ function Get-UcpdStatus {
 
 <#
 .SYNOPSIS
-    Configures the UCPD service start type and optionally stops the running driver.
+    Configures the UCPD service start type and scheduled task(s), and optionally stops the running driver.
+
+.DESCRIPTION
+    The UCPD scheduled task(s) are processed first, even when the service is already at the
+    target start type, because an enabled task can re-enable the service later.
 
 .PARAMETER State
-    Target UCPD state: Disabled or Default.
+    Target UCPD state: Disabled (service and tasks disabled) or Default (Windows defaults restored).
 
 .OUTPUTS
     PSCustomObject with:
-      Success         - [bool]   $true when the configuration change was applied.
+      Success         - [bool]   $true when the service configuration change was applied.
       Reason          - [string] NotAdmin | NotRegistered | AlreadyAtTarget | ConfigFailed |
                                  RequiresReboot | Stopped | Error
       RequiresReboot  - [bool]   $true when a reboot is needed for the change to fully take effect.
       Message         - [string] Human-readable summary for logging or display.
+      TaskSuccess     - [bool]   $true when the scheduled task(s) are at the target state.
+      TaskMessage     - [string] Human-readable summary of the scheduled task step.
 #>
 function Set-UcpdState {
     [CmdletBinding()]
@@ -140,6 +330,8 @@ function Set-UcpdState {
         Reason         = 'Error'
         RequiresReboot = $false
         Message        = ''
+        TaskSuccess    = $false
+        TaskMessage    = ''
     }
 
     # Elevation check
@@ -149,6 +341,11 @@ function Set-UcpdState {
         $result.Message = 'Administrator rights are required to change the UCPD state.'
         return $result
     }
+
+    # Scheduled task(s) - handled before the service so an early return cannot skip them
+    $taskResult         = Set-UcpdScheduledTaskState -State $State
+    $result.TaskSuccess = $taskResult.Success
+    $result.TaskMessage = $taskResult.Message
 
     # Service must be registered
     if (-not (Test-Path $script:ucpdRegistryPath)) {

@@ -13,6 +13,9 @@
     SetUserFTA cannot apply those associations, which is why it sometimes has to be disabled.
     Checks the UCPD.sys driver file presence, whether the associated Windows service is
     registered, its configured start type, and its current running status. Also reports
+    the UCPD scheduled task(s) (such as UCPD velocity, which runs UCPDMgr.exe and can
+    re-enable the driver) and their state; reading them requires administrator rights,
+    otherwise they are reported as UNKNOWN. Also reports
     whether the session has administrator rights (required to change the state with
     set-ucpd-service.ps1). Produces a color-coded report with OK/WARNING/ERROR indicators
     so administrators can quickly assess whether UCPD may interfere with setting default
@@ -54,10 +57,11 @@
 
 .NOTES
     File:           get-ucpd-status.ps1
-    Version:        2.0.0
+    Version:        2.1.0
     Author:         Claude Sonnet 4.6 (GitHub Copilot)
+    Contributors:   Claude (GitHub Copilot)
     License:        GPL-3.0-only
-    Prerequisites:  PowerShell 5.1+; no administrator rights required
+    Prerequisites:  PowerShell 5.1+; administrator rights needed only to read the UCPD scheduled task(s)
 
 .LINK
     https://github.com/Chemin-Neuf/pc-set-default-applications
@@ -83,11 +87,17 @@ param(
 # ============================================================
 # VERSION
 # ============================================================
-$scriptVersion = '2.0.0'
+$scriptVersion = '2.1.0'
 if ($Version) {
     Write-Host ('get-ucpd-status.ps1  v{0}' -f $scriptVersion)
     exit 0
 }
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+$serviceDisabledStartDword = 4
+$taskDisabledState         = 'Disabled'
 
 # ============================================================
 # GLOBALS
@@ -163,6 +173,8 @@ if ($Global:ConsoleVerbosity -ne 'None') {
 
 $status = Get-UcpdStatus
 $overallStatus = 'OK'
+$serviceError  = $false
+$taskReenablesService = $false
 
 # --- Check 1: Administrator privilege (informational) ---
 if ($status.IsAdmin) {
@@ -206,6 +218,7 @@ if ($status.ServiceRegistered) {
             default            { 'UNKNOWN' }
         }
         Write-CheckResult -Label 'Service start type' -Value $status.StartTypeLabel -Status $startStatus
+        if ($startStatus -eq 'ERROR') { $serviceError = $true }
         if ($startStatus -eq 'ERROR' -and $overallStatus -ne 'ERROR') { $overallStatus = 'ERROR' }
         elseif ($startStatus -eq 'WARNING' -and $overallStatus -eq 'OK') { $overallStatus = 'WARNING' }
     }
@@ -222,7 +235,7 @@ if ($status.ServiceRegistered) {
     if ($status.RunningStatus -ne 'N/A') {
         $runStatus = if ($status.RunningStatus -eq 'Running') { 'ERROR' } else { 'OK' }
         Write-CheckResult -Label 'Service current status' -Value $status.RunningStatus -Status $runStatus
-        if ($runStatus -eq 'ERROR') { $overallStatus = 'ERROR' }
+        if ($runStatus -eq 'ERROR') { $overallStatus = 'ERROR'; $serviceError = $true }
     }
     else {
         Write-CheckResult -Label 'Service current status' -Value 'Could not determine' -Status 'UNKNOWN'
@@ -232,12 +245,50 @@ else {
     Write-Detail 'Skipping running status check - service not registered.'
 }
 
+# --- Check 6: Scheduled task(s) that can re-enable UCPD ---
+switch ($status.TaskQueryStatus) {
+    'OK' {
+        if ($status.Tasks.Count -eq 0) {
+            Write-CheckResult -Label 'Scheduled task' -Value 'None found' -Status 'OK'
+        }
+        foreach ($task in $status.Tasks) {
+            if ($task.State -eq $taskDisabledState) {
+                $taskStatus = 'OK'
+            }
+            elseif ($status.StartTypeDword -eq $serviceDisabledStartDword) {
+                # Service is disabled but the enabled task can switch it back on
+                $taskStatus = 'ERROR'
+                $taskReenablesService = $true
+            }
+            else {
+                $taskStatus = 'WARNING'
+            }
+            Write-CheckResult -Label ('Scheduled task {0}' -f $task.FullPath) -Value $task.State -Status $taskStatus
+            if ($taskStatus -eq 'ERROR') { $overallStatus = 'ERROR' }
+            elseif ($taskStatus -eq 'WARNING' -and $overallStatus -eq 'OK') { $overallStatus = 'WARNING' }
+        }
+    }
+    'NotAdmin' {
+        Write-CheckResult -Label 'Scheduled task' -Value 'Not checked - run elevated to read the UCPD scheduled task(s)' -Status 'UNKNOWN'
+    }
+    default {
+        Write-CheckResult -Label 'Scheduled task' -Value ('Could not determine - {0}' -f $status.TaskQueryMessage) -Status 'UNKNOWN'
+    }
+}
+
 # --- Summary ---
 $summarySymbol  = Get-StatusSymbol -Status $overallStatus
 $summaryMessage = switch ($overallStatus) {
     'OK'      { 'UCPD is not active. No interference expected with default application settings.' }
     'WARNING' { 'UCPD is present but not actively running. SetUserFTA 1.8.4+ handles this correctly.' }
-    'ERROR'   { 'UCPD is active. Use SetUserFTA 1.8.4+ or run set-ucpd-service.ps1 -State Disabled (requires admin + reboot).' }
+    'ERROR'   {
+        if ($taskReenablesService -and -not $serviceError) {
+            'UCPD is disabled, but an enabled scheduled task may re-enable it. Run set-ucpd-service.ps1 -State Disabled (requires admin).'
+        }
+        else {
+            'UCPD is active. Use SetUserFTA 1.8.4+ or run set-ucpd-service.ps1 -State Disabled (requires admin + reboot).'
+        }
+    }
     default   { 'UCPD status could not be fully determined.' }
 }
 

@@ -20,14 +20,19 @@
     effect. When disabling, a stop of the running driver is attempted;
     kernel-mode drivers typically cannot be stopped without a reboot, so the stop attempt
     may fail gracefully and a reboot reminder is always emitted.
+    The UCPD scheduled task(s) (such as \Microsoft\Windows\AppxDeploymentClient\UCPD velocity,
+    which runs UCPDMgr.exe and can re-enable the driver) are disabled with -State Disabled and
+    re-enabled with -State Default. The script exits with code 1 if a task cannot be changed.
     Results are logged to a logs\ subfolder next to the script, with fallback to %TEMP%.
 
 .PARAMETER State
     Target UCPD state.
-    Disabled - Configures the service start type to Disabled and attempts to stop the
-               running driver immediately. A reboot is required if the stop attempt fails.
-    Default  - Restores the Windows default configuration (System start type). A reboot
-               is required for the driver to load if it is not already running.
+    Disabled - Configures the service start type to Disabled, disables the UCPD scheduled
+               task(s), and attempts to stop the running driver immediately. A reboot is
+               required if the stop attempt fails.
+    Default  - Restores the Windows default configuration (System start type, UCPD scheduled
+               task(s) enabled). A reboot is required for the driver to load if it is not
+               already running.
 
 .PARAMETER Verbosity
     Controls the amount of output written to the console.
@@ -50,17 +55,18 @@
 .EXAMPLE
     .\set-ucpd-service.ps1 -State Disabled
 
-    Disables the UCPD service and attempts to stop it immediately.
+    Disables the UCPD service and its scheduled task(s), and attempts to stop the driver immediately.
 
 .EXAMPLE
     .\set-ucpd-service.ps1 -State Default
 
-    Restores the UCPD service to the Windows default start type (System).
+    Restores the UCPD service to the Windows default start type (System) and re-enables its scheduled task(s).
 
 .NOTES
     File:           set-ucpd-service.ps1
-    Version:        3.0.1
+    Version:        3.1.0
     Author:         Claude Sonnet 4.6 (GitHub Copilot)
+    Contributors:   Claude (GitHub Copilot)
     License:        GPL-3.0-only
     Prerequisites:  PowerShell 5.1+; administrator rights required
 
@@ -92,7 +98,7 @@ param(
 # ============================================================
 # VERSION
 # ============================================================
-$scriptVersion = '3.0.1'
+$scriptVersion = '3.1.0'
 if ($Version) {
     Write-Host ('set-ucpd-service.ps1  v{0}' -f $scriptVersion)
     exit 0
@@ -137,6 +143,9 @@ Write-Info ('Requested state: {0}' -f $State)
 
 $before = Get-UcpdStatus
 Write-Info ('Before - Start type: {0} | Status: {1}' -f $before.StartTypeLabel, $before.RunningStatus)
+foreach ($task in $before.Tasks) {
+    Write-Info ('Before - Scheduled task: {0} | State: {1}' -f $task.FullPath, $task.State)
+}
 
 $result = Set-UcpdState -State $State
 
@@ -149,13 +158,22 @@ if (-not $result.Success) {
         }
         'ConfigFailed' {
             Write-ErrorLog $result.Message
+            if (-not $result.TaskSuccess) { Write-ErrorLog $result.TaskMessage }
             exit 1
         }
         default {
             Write-ErrorLog $result.Message
+            if (-not $result.TaskSuccess) { Write-ErrorLog $result.TaskMessage }
             exit 1
         }
     }
+}
+
+if ($result.TaskSuccess) {
+    Write-Info $result.TaskMessage
+}
+else {
+    Write-ErrorLog $result.TaskMessage
 }
 
 switch ($result.Reason) {
@@ -176,6 +194,16 @@ switch ($result.Reason) {
         Write-Warn $result.Message
     }
     default          { Write-Info $result.Message }
+}
+
+$after = Get-UcpdStatus
+foreach ($task in $after.Tasks) {
+    Write-Info ('After  - Scheduled task: {0} | State: {1}' -f $task.FullPath, $task.State)
+}
+
+if (-not $result.TaskSuccess) {
+    Write-ErrorLog ('The UCPD scheduled task(s) could not be set to {0}. If left enabled, they may re-enable UCPD.' -f $State)
+    exit 1
 }
 
 exit 0

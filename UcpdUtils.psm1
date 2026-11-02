@@ -20,8 +20,8 @@
 $script:ucpdDriverPath      = Join-Path $env:SystemRoot 'System32\drivers\UCPD.sys'
 $script:ucpdServiceName     = 'UCPD'
 $script:ucpdRegistryPath    = 'HKLM:\SYSTEM\CurrentControlSet\Services\UCPD'
-$script:ucpdDefaultScToken  = 'auto'   # sc.exe token for Automatic
-$script:ucpdDefaultStartDword = 2      # must match $script:ucpdDefaultScToken
+$script:ucpdDefaultScToken  = 'system' # sc.exe token for System (Windows default for this file system filter driver)
+$script:ucpdDefaultStartDword = 1      # must match $script:ucpdDefaultScToken
 
 # ============================================================
 # PRIVATE HELPERS

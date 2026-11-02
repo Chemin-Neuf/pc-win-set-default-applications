@@ -26,7 +26,7 @@
     Target UCPD state.
     Disabled - Configures the service start type to Disabled and attempts to stop the
                running driver immediately. A reboot is required if the stop attempt fails.
-    Default  - Restores the Windows default configuration (Automatic start type). A reboot
+    Default  - Restores the Windows default configuration (System start type). A reboot
                is required for the driver to load if it is not already running.
 
 .PARAMETER Verbosity
@@ -55,11 +55,11 @@
 .EXAMPLE
     .\set-ucpd-service.ps1 -State Default
 
-    Restores the UCPD service to the Windows default start type (Automatic).
+    Restores the UCPD service to the Windows default start type (System).
 
 .NOTES
     File:           set-ucpd-service.ps1
-    Version:        3.0.0
+    Version:        3.0.1
     Author:         Claude Sonnet 4.6 (GitHub Copilot)
     License:        GPL-3.0-only
     Prerequisites:  PowerShell 5.1+; administrator rights required
@@ -92,7 +92,7 @@ param(
 # ============================================================
 # VERSION
 # ============================================================
-$scriptVersion = '3.0.0'
+$scriptVersion = '3.0.1'
 if ($Version) {
     Write-Host ('set-ucpd-service.ps1  v{0}' -f $scriptVersion)
     exit 0

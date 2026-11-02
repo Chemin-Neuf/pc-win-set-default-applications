@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UcpdUtils.psm1
 
+### [1.0.1] - 2026-11-02
+
+#### Fixed
+
+- `Set-UcpdState -State Default` now restores the real Windows default start type for UCPD, System, instead of Automatic.
+
 ### [1.0.0] - 2026-05-06
 
 #### Added
@@ -149,6 +155,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Imports `UcpdUtils.psm1` and calls `Get-UcpdStatus`.
 
 ## set-ucpd-service.ps1
+
+### [3.0.1] - 2026-11-02
+
+#### Fixed
+
+- `-State Default` now restores the real Windows default start type for UCPD, System, instead of Automatic. The help text now says System and explains what UCPD is and why it may need to be disabled.
 
 ### [3.0.0] - 2026-05-06
 

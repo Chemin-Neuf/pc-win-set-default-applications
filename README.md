@@ -54,7 +54,9 @@ Edit `default-applications.csv` to add your associations. Each uncommented row m
 
 `get-ucpd-status.ps1` checks whether the UCPD (UserChoice Protection Driver) is present, registered, and running — this driver can block SetUserFTA from writing UserChoice keys. No changes are made; the output includes color-coded OK / WARNING / ERROR indicators. Run this first if associations are not being applied.
 
-`set-ucpd-service.ps1 -State Disabled` configures the UCPD service start type to Disabled and attempts to stop the running driver immediately; `-State Default` restores the Windows default (Automatic). Administrator rights are required. A reboot is normally needed for any change to take full effect.
+UCPD (`C:\Windows\System32\drivers\UCPD.sys`) is a Microsoft file system filter driver registered as the `UCPD` service (display name `UCPD`). By default it starts with the system (start type System, `Start = 1`), early in the boot process.
+
+`set-ucpd-service.ps1 -State Disabled` configures the UCPD service start type to Disabled and attempts to stop the running driver immediately; `-State Default` restores the Windows default (System). Administrator rights are required. A reboot is normally needed for any change to take full effect.
 
 ## Comparison with Microsoft's Supported Methods
 

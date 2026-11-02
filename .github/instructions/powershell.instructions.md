@@ -4,7 +4,7 @@ applyTo: "**/*.ps1,**/*.psm1"
 <!-- AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE — edit in dev-standards and re-sync -->
 <!--
   Chemin-Neuf dev-standards — PowerShell rules
-  Last Updated: 2026-05-08
+  Last Updated: 2026-05-23
 
   Original Author: Claude Sonnet 4.6 (Anthropic / GitHub Copilot)
   This file is AI-generated operational instructions for use by AI coding assistants.
@@ -23,10 +23,10 @@ applyTo: "**/*.ps1,**/*.psm1"
 | File Naming | Modules: PascalCase; Scripts: kebab-case |
 | Function Naming | Approved Verb-Noun pattern |
 | Variable & Parameter Naming | Local: camelCase; Global: `$Global:` prefix; Parameters: PascalCase |
-| Code Style | `[CmdletBinding()]`; config block near top; full cmdlet names; no aliases |
+| Code Style | `[CmdletBinding()]`; config block near top; full cmdlet names; no aliases; LF line endings |
 | Comment Style | `<#…#>` for block comments; `#` for inline; keep concise |
 | License Notice | 3-line SPDX block at top of file; also in `.NOTES` for scripts |
-| Comment-Based Help | `.ps1` only: SYNOPSIS, DESCRIPTION, PARAMETER, EXAMPLE, NOTES, LINK |
+| Comment-Based Help | `.ps1` only: SYNOPSIS, DESCRIPTION, PARAMETER, EXAMPLE, NOTES, LINK; blank line before `<#`; no dot-starting lines; one URL per `.LINK` |
 | Standard Parameters | Verbosity, LogVerbosity, Quiet, Version — required on all scripts |
 | Shared Utilities | Use `ps-shared-utils`; check before writing new utilities; import via `$PSScriptRoot` |
 | Logging | `YYYY-MM-DD HH:mm:ss \| LEVEL \| message`; one file per run; `logs\` subfolder |
@@ -34,7 +34,7 @@ applyTo: "**/*.ps1,**/*.psm1"
 | Error Handling | try-catch with `-ErrorAction Stop`; graceful degradation; halt only on critical failures |
 | Safe File Output | `Test-Path` before writing; `-Force` switch to allow overwrite; never silent overwrite |
 | Compatibility | Target PS 5.1+; declare `#Requires` if a higher version is needed |
-| Versioning | `$scriptVersion` is authoritative; MAJOR.MINOR.PATCH |
+| Versioning | `$scriptVersion` is the single source of truth; `.NOTES Version:` references it, never duplicates it; MAJOR.MINOR.PATCH |
 | Security | `Get-Credential`; never log credentials; manual elevation check; no `Invoke-Expression` |
 | Testing | Manual checklist: PS 5.1, PS 7, restricted policy, with/without admin; Pester TBD |
 
@@ -75,6 +75,7 @@ Use PowerShell approved verb-noun patterns:
 - Use backtick (`` ` ``) for line continuation only inside functions
 - Use `@{}` for hashtables; use `[ordered]@{}` to preserve insertion order
 - String formatting: use the `-f` operator for cross-version compatibility
+- Save all PowerShell files with LF (`\n`) line endings — Windows editors and Git for Windows may default to CRLF; configure your editor and `.gitattributes` accordingly
 
 ## Comment Style
 
@@ -145,17 +146,22 @@ Applies to `.ps1` scripts only. For `.psm1` modules, use per-function `<# … #>
 
 ```
 File:           script-name.ps1
-Version:        0.1.0
+Version:        see $scriptVersion in the Configuration section below
 Author:         Name  (or "Model name (GitHub Copilot)" for AI-generated files)
 License:        GPL-3.0-only
 Prerequisites:  PowerShell 5.1+; administrator rights  (use "None" if not applicable)
 ```
 
-> **Note:** The `Version:` field here must match `$scriptVersion` (see Versioning). It is a secondary reference for `Get-Help` discoverability only — `$scriptVersion` is authoritative.
+> **Note:** `Version:` must not contain a literal number — use the exact phrase `see $scriptVersion in the Configuration section below`. `$scriptVersion` (declared in the configuration block) is the single source of truth; there is no second copy to keep in sync.
 
 Do NOT implement a custom `-Help` switch. Use `Get-Help .\script.ps1` instead.
 
-> **Get-Help and UNC paths (PowerShell 5.1 limitation):** `Get-Help` does not work for scripts located on UNC paths (`\\server\share\script.ps1`) or on mapped network drives in PowerShell 5.1. This is caused by the Windows Security Zone applied to network-backed locations, which prevents the .NET Framework from reading the comment-based help content. PowerShell 7 is not affected. **Workaround:** copy the script to a local drive before calling `Get-Help` when running PS 5.1.
+### Known Get-Help pitfalls
+
+1. **Empty line required before `<#`** — there must be a blank line between the license notice block and the `<#` that opens the comment-based help block. Omitting it silently breaks `Get-Help` on all PowerShell versions.
+2. **No line may start with a dot** — inside a comment-based help block, any line whose first non-space character is a dot followed by letters is parsed as a keyword. Avoid line-wrapping sentences so that tokens like `.bak` or `.git` start a new line.
+3. **One URL per `.LINK` keyword** — PowerShell renders the entire `RELATED LINKS` block once for each `.LINK` entry found. Placing multiple URLs under a single `.LINK` therefore causes the full list to be repeated. Each URL must have its own `.LINK` keyword.
+4. **UNC paths / mapped drives (PS 5.1 only)** — `Get-Help` does not work for scripts on UNC paths (`\\server\share\script.ps1`) or mapped network drives under PowerShell 5.1. This is caused by the Windows Security Zone restriction, which prevents the .NET Framework from reading comment-based help on network-backed locations. PowerShell 7 is not affected. **Workaround:** copy the script to a local drive before calling `Get-Help` when running PS 5.1.
 
 ## Standard Parameters
 
@@ -189,16 +195,15 @@ Notes:
 
 Shared utility functions live in the dedicated repository
 `github.com/Chemin-Neuf/ps-shared-utils`. Each project receives a copy of
-`SharedUtils.psm1` via manual sync (a sync script is planned; see `tools/`).
+`SharedUtils.psm1` via manual sync (a sync script is planned; see `scripts/`).
 
 - Before creating any new utility function, check the `ps-shared-utils` README
   for the current list of exported functions
 - Do not duplicate utility logic inside a project — fix or extend `ps-shared-utils`
   and re-sync
-- The module file is always placed at the project root alongside the scripts that
-  use it
-
-Import pattern:
+- **Dedicated PowerShell repositories** (primary artifact = PS scripts): the module file is placed at the repository root alongside the scripts that use it
+- **Non-PowerShell repositories** with helper PS scripts: the module file goes in the `scripts/` subfolder alongside those scripts (see global script placement rule)
+- The import pattern is the same in both cases — `$PSScriptRoot` resolves to wherever the calling script lives:
 
 ```powershell
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'SharedUtils.psm1') -Force
@@ -277,13 +282,14 @@ Global rule applies: never overwrite or delete an existing file silently. PowerS
 Global versioning rules apply (see `global.instructions.md`). PowerShell-specific location:
 
 - `$scriptVersion` — declared as a plain string at the top of the script, inside the user-tunable configuration block — is the **single source of truth** for the script's version number
-- All other places that display or record the version (the `-Version` parameter, the `.NOTES` `Version:` field) must reference or match `$scriptVersion`; they are not authoritative
+- The `.NOTES` `Version:` field must contain `see $scriptVersion in the Configuration section below` — never a literal number; it is a pointer, not a copy
+- The `-Version` parameter displays `$scriptVersion` at runtime — no hardcoded string
 - Declare the variable like this, at the top of the configuration block:
   ```powershell
-  $scriptVersion = '0.1.0'
+  $scriptVersion = '1.0.0'
   ```
 - A `scripts-manifest.json` at the project root is optional and may be used as a convenience overview; it is not authoritative and does not need to be kept in sync
-- When modifying a script, update only `$scriptVersion` according to the nature of the change before committing, then update the `.NOTES` `Version:` field to match
+- When modifying a script, update `$scriptVersion` according to the nature of the change before committing; no other version field needs touching
 
 ## Security
 

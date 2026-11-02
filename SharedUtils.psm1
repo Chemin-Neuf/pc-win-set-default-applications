@@ -5,7 +5,7 @@
   Full license text: see LICENSE at the repository root
 #>
 # Original Author: Claude 3.5 Sonnet (Anthropic / GitHub Copilot)
-# Major Contributors: GPT-5.4 (GitHub Copilot)
+# Major Contributors: GPT-5.4 (GitHub Copilot), Gemini 3.5 Flash (Google / GitHub Copilot), Claude Sonnet 4.6 (Anthropic / GitHub Copilot), Gemini 3.8 Flash (Google / GitHub Copilot)
 
 <#
 .SYNOPSIS
@@ -20,6 +20,7 @@
 function Write-Log {
     param(
         [Parameter(Mandatory=$true)]
+        [AllowEmptyString()]
         [string]$Message,
         [ValidateSet('INFO', 'WARN', 'ERROR', 'SUCCESS', 'DETAIL')]
         [string]$Level = 'INFO'
@@ -67,7 +68,7 @@ function Write-Status {
     Message to display and log.
 #>
 function Write-Info {
-    param([Parameter(Mandatory=$true)][string]$Message)
+    param([Parameter(Mandatory=$true)][AllowEmptyString()][string]$Message)
     if (-not $Global:ConsoleVerbosity) { $Global:ConsoleVerbosity = 'Detailed' }
     if ($Global:ConsoleVerbosity -ne 'None') { Write-Host $Message -ForegroundColor Cyan }
     Write-Log $Message 'INFO'
@@ -81,7 +82,7 @@ function Write-Info {
     Message to display and log.
 #>
 function Write-Warn {
-    param([Parameter(Mandatory=$true)][string]$Message)
+    param([Parameter(Mandatory=$true)][AllowEmptyString()][string]$Message)
     if (-not $Global:ConsoleVerbosity) { $Global:ConsoleVerbosity = 'Detailed' }
     if ($Global:ConsoleVerbosity -ne 'None') { Write-Host $Message -ForegroundColor Yellow }
     Write-Log $Message 'WARN'
@@ -95,9 +96,31 @@ function Write-Warn {
     Message to display and log.
 #>
 function Write-ErrorLog {
-    param([Parameter(Mandatory=$true)][string]$Message)
+    param([Parameter(Mandatory=$true)][AllowEmptyString()][string]$Message)
     if (-not $Global:ConsoleVerbosity) { $Global:ConsoleVerbosity = 'Detailed' }
     if ($Global:ConsoleVerbosity -ne 'None') { Write-Host $Message -ForegroundColor Red }
+    Write-Log $Message 'ERROR'
+}
+
+<#
+.SYNOPSIS
+    Writes a fatal error message unconditionally and logs it.
+
+.DESCRIPTION
+    Unlike Write-ErrorLog, this function always writes to the console regardless of the current
+    ConsoleVerbosity setting (including None and Quiet), because the caller must be informed
+    of the reason the script is halting. Output is routed through the error stream so that
+    calling scripts can capture informational and error output separately.
+    Use only for conditions that prevent the script from continuing.
+
+.PARAMETER Message
+    The fatal error message to display and log.
+#>
+function Write-FatalError {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Message)
+
+    # Always write to the error stream — bypasses ConsoleVerbosity even when set to 'None' or Quiet.
+    $Host.UI.WriteErrorLine($Message)
     Write-Log $Message 'ERROR'
 }
 
@@ -109,7 +132,7 @@ function Write-ErrorLog {
     Message to display and log.
 #>
 function Write-Success {
-    param([Parameter(Mandatory=$true)][string]$Message)
+    param([Parameter(Mandatory=$true)][AllowEmptyString()][string]$Message)
     if (-not $Global:ConsoleVerbosity) { $Global:ConsoleVerbosity = 'Detailed' }
     if ($Global:ConsoleVerbosity -ne 'None') { Write-Host $Message -ForegroundColor Green }
     Write-Log $Message 'SUCCESS'
@@ -123,7 +146,7 @@ function Write-Success {
     Detail message to display and log.
 #>
 function Write-Detail {
-    param([Parameter(Mandatory=$true)][string]$Message)
+    param([Parameter(Mandatory=$true)][AllowEmptyString()][string]$Message)
     if (-not $Global:ConsoleVerbosity) { $Global:ConsoleVerbosity = 'Detailed' }
     if (-not $Global:LogVerbosity) { $Global:LogVerbosity = 'Detailed' }
     
@@ -282,5 +305,120 @@ function Initialize-ConsoleEncoding {
     }
 }
 
+# ============================================================
+# General-purpose utilities
+# ============================================================
+
+<#
+.SYNOPSIS
+    Merges a sequence of values into a single semi-colon-delimited string, deduplicating entries.
+.PARAMETER Values
+    Any enumerable collection of values. Blank or whitespace-only entries are discarded.
+.OUTPUTS
+    System.String — values joined with "; ", or an empty string if all inputs are blank.
+#>
+function Join-UniqueStrings {
+    param([System.Collections.IEnumerable]$Values)
+
+    $list = New-Object System.Collections.Generic.List[string]
+    foreach ($value in $Values) {
+        $text = [string]$value
+        if (-not [string]::IsNullOrWhiteSpace($text) -and -not $list.Contains($text)) {
+            $list.Add($text)
+        }
+    }
+    return ($list -join '; ')
+}
+
+<#
+.SYNOPSIS
+    Returns the first non-blank string value from an array.
+.PARAMETER Values
+    Array of candidate values.
+.OUTPUTS
+    System.String — first non-blank entry, or an empty string if all are blank.
+#>
+function Get-FirstValue {
+    param([object[]]$Values)
+
+    foreach ($value in $Values) {
+        $text = [string]$value
+        if (-not [string]::IsNullOrWhiteSpace($text)) {
+            return $text
+        }
+    }
+
+    return ''
+}
+
+<#
+.SYNOPSIS
+    Exports objects to a CSV file with an existence check and optional overwrite guard.
+.DESCRIPTION
+    Checks whether the destination file already exists before writing. Without -Force the
+    function writes an error and returns without creating the file. With -Force it overwrites
+    after emitting a warning. Implements the Safe File Output principle from global.instructions.md.
+.PARAMETER InputObject
+    Objects to export. Passed directly to Export-Csv.
+.PARAMETER LiteralPath
+    Destination file path (passed as -LiteralPath to Export-Csv).
+.PARAMETER Force
+    When set, overwrites an existing file after emitting a warning. Without this switch the
+    function refuses to overwrite.
+.PARAMETER Quiet
+    Suppresses the warning when overwriting (requires -Force).
+.OUTPUTS
+    None. Writes to file and logs via Write-Info / Write-Warn / Write-ErrorLog.
+#>
+function Export-CsvSafely {
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [object[]]$InputObject,
+
+        [Parameter(Mandatory = $true)]
+        [string]$LiteralPath,
+
+        [switch]$Force,
+        [switch]$Quiet
+    )
+
+    begin { $collected = [System.Collections.Generic.List[object]]::new() }
+    process { foreach ($obj in $InputObject) { $collected.Add($obj) } }
+    end {
+        if (Test-Path -LiteralPath $LiteralPath) {
+            if (-not $Force) {
+                Write-ErrorLog ("Output file already exists: {0} — use -Force to overwrite." -f $LiteralPath)
+                return
+            }
+            if (-not $Quiet) {
+                Write-Warn ("Overwriting existing file: {0}" -f $LiteralPath)
+            }
+        }
+
+        $collected | Export-Csv -LiteralPath $LiteralPath -NoTypeInformation -Encoding UTF8
+        Write-Info ("Wrote {0} rows to {1}" -f $collected.Count, $LiteralPath)
+    }
+}
+
+function Backup-File {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    $dir       = [System.IO.Path]::GetDirectoryName($Path)
+    $leaf      = Split-Path -Path $Path -Leaf
+    $baseName  = [System.IO.Path]::GetFileNameWithoutExtension($Path)
+    $extension = [System.IO.Path]::GetExtension($Path)
+    if ($baseName -eq '') {
+        $baseName  = $leaf
+        $extension = ''
+    }
+    $timestamp = (Get-Date).ToString('yyyyMMdd_HHmmssfff')
+    $backupFileName = "${baseName}_${timestamp}${extension}.bak"
+    $backupPath = if ($dir) { Join-Path $dir $backupFileName } else { $backupFileName }
+    Copy-Item -LiteralPath $Path -Destination $backupPath
+    Write-Detail "Backed up existing file: $backupPath"
+}
+
 # Export all functions
-Export-ModuleMember -Function Write-Log, Write-Status, Write-Info, Write-Warn, Write-ErrorLog, Write-Success, Write-Detail, Initialize-Log, Get-StatusSymbol, Test-AdminPrivilege, Get-ScriptVersion, Initialize-ConsoleEncoding
+Export-ModuleMember -Function Write-Log, Write-Status, Write-Info, Write-Warn, Write-ErrorLog, Write-FatalError, Write-Success, Write-Detail, Initialize-Log, Get-StatusSymbol, Test-AdminPrivilege, Get-ScriptVersion, Initialize-ConsoleEncoding, Join-UniqueStrings, Get-FirstValue, Export-CsvSafely, Backup-File

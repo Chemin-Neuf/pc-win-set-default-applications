@@ -41,3 +41,5 @@ secrets.*
 
 # Exclude .NET assemblies from source
 *.dll
+
+# >>>>> REPO-SPECIFIC IGNORES — lines below are preserved during sync <<<<<

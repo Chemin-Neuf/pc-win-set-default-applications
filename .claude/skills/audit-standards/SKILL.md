@@ -8,7 +8,7 @@ argument-hint: "path/to/file-or-directory"
 disable-model-invocation: true
 allowed-tools: Read Glob Grep Edit Write
 ---
-<!-- AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE — edit in dev-standards and re-sync -->
+<!-- AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE - edit in dev-standards and re-sync -->
 
 # Standards Audit
 

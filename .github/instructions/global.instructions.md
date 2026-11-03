@@ -1,10 +1,10 @@
 ---
 applyTo: "**"
 ---
-<!-- AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE — edit in dev-standards and re-sync -->
+<!-- AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE - edit in dev-standards and re-sync -->
 <!--
   Chemin-Neuf dev-standards — global rules
-  Last Updated: 2026-09-21
+  Last Updated: 2026-11-03
   Original Author: Claude Sonnet 4.6 (Anthropic / GitHub Copilot)
   Major Contributors: Gemini 3.8 Flash (Google / GitHub Copilot)
   This file is AI-generated operational instructions for use by AI coding assistants.
@@ -21,7 +21,7 @@ applyTo: "**"
 | Topic | In brief |
 |---|---|
 | License | GPL-3.0-only; every source file carries a license notice; preserve third-party notices |
-| Encoding | UTF-8 everywhere; prefer ASCII; no BOM; LF; doc typography (`&nbsp;`); no trailing-space breaks |
+| Encoding | UTF-8 everywhere; prefer ASCII; no BOM except PowerShell files; LF; doc typography (`&nbsp;`); no trailing-space breaks |
 | Design Principles | DRY, Simplicity, Single Source of Truth, No Magic Values, Safe File Output, No Legacy by Default |
 | AI Attribution | Record model name in file header when AI wrote or significantly changed the file |
 | Security Baseline | No secrets in tracked files; credentials from env/vault/prompt; validate all external input |
@@ -52,7 +52,7 @@ applyTo: "**"
 - All files use UTF-8 encoding: source code, scripts, logs, documentation
 - Prefer ASCII characters when practical to avoid copy-paste and toolchain compatibility issues
 - Use non-ASCII characters only when they are required by the content
-- No BOM (Byte Order Mark) unless required by a specific tool
+- No BOM (Byte Order Mark), with one exception: PowerShell files (`.ps1`, `.psm1`, `.psd1`) are always saved as UTF-8 **with** BOM, because Windows PowerShell 5.1 misreads BOM-less UTF-8 — see the File Encoding section of `powershell.instructions.md`
 - Log files are UTF-8 encoded plain text
 - All files use LF (`\n`) line endings; the only exception is `.bat` and `.cmd` files, which require CRLF for Windows compatibility
 - In Markdown, do not rely on trailing spaces to force hard line breaks; use a normal paragraph break or an explicit `<br>` only when a forced line break is genuinely required

@@ -8,3 +8,7 @@ insert_final_newline = true
 
 [*.{bat,cmd}]
 end_of_line = crlf
+
+# Windows PowerShell 5.1 reads BOM-less files as ANSI (Windows-1252), not UTF-8
+[*.{ps1,psm1,psd1}]
+charset = utf-8-bom

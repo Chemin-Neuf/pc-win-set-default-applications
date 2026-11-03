@@ -1,10 +1,10 @@
 ---
-applyTo: "**/*.ps1,**/*.psm1"
+applyTo: "**/*.ps1,**/*.psm1,**/*.psd1"
 ---
-<!-- AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE — edit in dev-standards and re-sync -->
+<!-- AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE - edit in dev-standards and re-sync -->
 <!--
   Chemin-Neuf dev-standards — PowerShell rules
-  Last Updated: 2026-05-23
+  Last Updated: 2026-11-03
 
   Original Author: Claude Sonnet 4.6 (Anthropic / GitHub Copilot)
   This file is AI-generated operational instructions for use by AI coding assistants.
@@ -20,10 +20,12 @@ applyTo: "**/*.ps1,**/*.psm1"
 
 | Topic | In brief |
 |---|---|
-| File Naming | Modules: PascalCase; Scripts: kebab-case |
+| File Naming | Modules: PascalCase; Manifests: same name as module; Scripts: kebab-case |
 | Function Naming | Approved Verb-Noun pattern |
 | Variable & Parameter Naming | Local: camelCase; Global: `$Global:` prefix; Parameters: PascalCase |
+| Parameter Validation | Fixed-value parameters (`[string]` and `[string[]]`): `[ValidateSet()]` for tab completion; no duplicate manual check |
 | Code Style | `[CmdletBinding()]`; config block near top; full cmdlet names; no aliases; LF line endings |
+| File Encoding | UTF-8 **with** BOM for `.ps1`, `.psm1`, `.psd1` (exception to the global no-BOM rule) |
 | Comment Style | `<#…#>` for block comments; `#` for inline; keep concise |
 | License Notice | 3-line SPDX block at top of file; also in `.NOTES` for scripts |
 | Comment-Based Help | `.ps1` only: SYNOPSIS, DESCRIPTION, PARAMETER, EXAMPLE, NOTES, LINK; blank line before `<#`; no dot-starting lines; one URL per `.LINK` |
@@ -45,6 +47,7 @@ applyTo: "**/*.ps1,**/*.psm1"
 **STATUS: DECIDED**
 
 - Modules (`.psm1`): PascalCase — e.g. `SharedUtils.psm1`
+- Module manifests (`.psd1`): same base name as the module they describe — e.g. `SharedUtils.psd1`
 - Scripts (`.ps1`): kebab-case — e.g. `check-windows-info.ps1`
 
 ## Function Naming
@@ -63,6 +66,19 @@ Use PowerShell approved verb-noun patterns:
 - Global variables: `$Global:` prefix — e.g. `$Global:LogFile`
 - Parameters: PascalCase with `[Parameter()]` attributes when needed
 
+## Parameter Validation
+
+**STATUS: DECIDED**
+
+- Any parameter that accepts only a fixed, known list of values must declare `[ValidateSet('Value1', 'Value2')]` on the parameter declaration
+- This applies to single-value `[string]` parameters (e.g. `-Verbosity Normal`) and to multi-value `[string[]]` parameters (e.g. `-Language ps,html`) alike — PowerShell checks each element of the array
+- Purpose: tab completion of the allowed values for the user, and rejection of invalid values before any script code runs
+- Do not duplicate the check with manual validation code or a separate `$valid*` array — `[ValidateSet()]` is the single source of truth for the allowed values
+- `[ValidateSet()]` only accepts literal values, not variables; if the same values must also appear elsewhere in the script (e.g. a lookup table), keep both lists in sync
+- Accepted trade-off: an invalid value is rejected by PowerShell at parameter binding, before logging is initialised — the error appears on the console only (PowerShell's standard message, which lists the valid values) and is not written to the log file. Tab completion takes priority over logging this error
+- Manual validation with `Write-ErrorLog` remains the rule when the allowed values are only known at runtime (e.g. read from a config file or discovered on disk)
+- List the valid values in the parameter's `.PARAMETER` help block (see Comment-Based Help)
+
 ## Code Style
 
 **STATUS: DECIDED**
@@ -76,6 +92,17 @@ Use PowerShell approved verb-noun patterns:
 - Use `@{}` for hashtables; use `[ordered]@{}` to preserve insertion order
 - String formatting: use the `-f` operator for cross-version compatibility
 - Save all PowerShell files with LF (`\n`) line endings — Windows editors and Git for Windows may default to CRLF; configure your editor and `.gitattributes` accordingly
+
+## File Encoding
+
+**STATUS: DECIDED**
+
+- Save all PowerShell files (`.ps1`, `.psm1`, `.psd1`) as UTF-8 **with** BOM — this is the only exception to the global "no BOM" rule
+- Apply this to every PowerShell file, including ASCII-only files, so that adding a non-ASCII character later cannot silently break the file
+- Reason: Windows PowerShell 5.1 reads BOM-less files as ANSI (Windows-1252), which corrupts non-ASCII text (`é` becomes `Ã©`) or causes parse errors; PowerShell 7+ reads both correctly
+- Enforced by `.editorconfig` (`charset = utf-8-bom`); scripts that generate PowerShell files must write them with a BOM (e.g. `[System.Text.UTF8Encoding]::new($true)`)
+- Prefer ASCII in PowerShell source anyway, as required by the global Encoding rule
+- Reference: [Understanding file encoding in VS Code and PowerShell](https://learn.microsoft.com/en-us/powershell/scripting/dev-cross-plat/vscode/understanding-file-encoding)
 
 ## Comment Style
 
@@ -120,11 +147,23 @@ Place the same 3 lines inside a `<# ... #>` block at the very top of the file:
 #>
 ```
 
+### Placement — `.psd1` data files and module manifests
+
+Place the 3-line block as `#` comment lines at the very top of the file, before the opening `@{`:
+
+```powershell
+# Copyright (C) Chemin-Neuf IT Team
+# SPDX-License-Identifier: GPL-3.0-only
+# Full license text: see LICENSE at the repository root
+
+@{
+```
+
 ## Comment-Based Help (Script Headers)
 
 **STATUS: DECIDED**
 
-Applies to `.ps1` scripts only. For `.psm1` modules, use per-function `<# … #>` block comments instead — no file-level help block.
+Applies to `.ps1` scripts only. For `.psm1` modules, use per-function `<# … #>` block comments instead — no file-level help block. `.psd1` files have no help block.
 
 ### File structure order (`.ps1`)
 
@@ -290,6 +329,7 @@ Global versioning rules apply (see `global.instructions.md`). PowerShell-specifi
   ```
 - A `scripts-manifest.json` at the project root is optional and may be used as a convenience overview; it is not authoritative and does not need to be kept in sync
 - When modifying a script, update `$scriptVersion` according to the nature of the change before committing; no other version field needs touching
+- Modules: `ModuleVersion` in the `.psd1` manifest is the single source of truth for the module's version; when modifying the `.psm1` or `.psd1`, update `ModuleVersion` according to the nature of the change before committing
 
 ## Security
 
@@ -307,7 +347,7 @@ All global security rules apply. PowerShell-specific implementation:
   }
   ```
 - Validate file path parameters with `Test-Path` before use
-- Validate enum-style string parameters with `[ValidateSet('Value1', 'Value2')]` on the parameter declaration — this enforces allowed values at call time and enables tab-completion
+- Validate fixed-value parameters with `[ValidateSet()]` — see Parameter Validation
 - Never use `Invoke-Expression` — it evaluates arbitrary strings as code and is an injection risk; there is always a safer alternative
 
 ## Testing

@@ -1,4 +1,4 @@
-# AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE — edit in dev-standards and re-sync
+﻿# AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE - edit in dev-standards and re-sync
 # Copyright (C) Chemin-Neuf IT Team
 # SPDX-License-Identifier: GPL-3.0-only
 # Full license text: see LICENSE at the repository root
@@ -7,7 +7,7 @@
 
 @{
     RootModule        = 'SharedUtils.psm1'
-    ModuleVersion     = '1.3.3'
+    ModuleVersion     = '1.3.4'
     GUID              = 'eecf4c73-8eae-4295-93b1-12a329f341aa'
     Author            = 'Chemin-Neuf IT Team'
     CompanyName       = 'Chemin-Neuf'

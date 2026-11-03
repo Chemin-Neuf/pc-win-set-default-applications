@@ -1,4 +1,4 @@
-# AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE — edit in dev-standards and re-sync
+﻿# AUTO-SYNCED from github.com/Chemin-Neuf/dev-standards DO NOT EDIT HERE - edit in dev-standards and re-sync
 <#
   Copyright (C) Chemin-Neuf IT Team
   SPDX-License-Identifier: GPL-3.0-only
@@ -119,7 +119,7 @@ function Write-ErrorLog {
 function Write-FatalError {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Message)
 
-    # Always write to the error stream — bypasses ConsoleVerbosity even when set to 'None' or Quiet.
+    # Always write to the error stream - bypasses ConsoleVerbosity even when set to 'None' or Quiet.
     $Host.UI.WriteErrorLine($Message)
     Write-Log $Message 'ERROR'
 }
@@ -315,7 +315,7 @@ function Initialize-ConsoleEncoding {
 .PARAMETER Values
     Any enumerable collection of values. Blank or whitespace-only entries are discarded.
 .OUTPUTS
-    System.String — values joined with "; ", or an empty string if all inputs are blank.
+    System.String - values joined with "; ", or an empty string if all inputs are blank.
 #>
 function Join-UniqueStrings {
     param([System.Collections.IEnumerable]$Values)
@@ -336,7 +336,7 @@ function Join-UniqueStrings {
 .PARAMETER Values
     Array of candidate values.
 .OUTPUTS
-    System.String — first non-blank entry, or an empty string if all are blank.
+    System.String - first non-blank entry, or an empty string if all are blank.
 #>
 function Get-FirstValue {
     param([object[]]$Values)
@@ -387,7 +387,7 @@ function Export-CsvSafely {
     end {
         if (Test-Path -LiteralPath $LiteralPath) {
             if (-not $Force) {
-                Write-ErrorLog ("Output file already exists: {0} — use -Force to overwrite." -f $LiteralPath)
+                Write-ErrorLog ("Output file already exists: {0} - use -Force to overwrite." -f $LiteralPath)
                 return
             }
             if (-not $Quiet) {

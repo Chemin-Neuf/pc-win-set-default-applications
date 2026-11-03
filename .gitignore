@@ -1,6 +1,11 @@
 # Logs
 logs/
 *.log
+*.transcript.txt
+
+# Build and test artifacts
+TestResults/
+obj/
 
 # IDE
 .vscode/settings.json
@@ -12,11 +17,14 @@ logs/
 
 # OS
 Thumbs.db
-desktop.ini
+[Dd]esktop.ini
+$RECYCLE.BIN/
 .DS_Store
 
 # Secrets & sensitive config
 *.pfx
+*.p12
+*.pem
 *.key
 *.env
 secrets.*
@@ -42,4 +50,4 @@ secrets.*
 # Exclude .NET assemblies from source
 *.dll
 
-# >>>>> REPO-SPECIFIC IGNORES — lines below are preserved during sync <<<<<
+# >>>>> REPO-SPECIFIC IGNORES - lines below are preserved during sync <<<<<
